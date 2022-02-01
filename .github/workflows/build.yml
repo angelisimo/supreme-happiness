@@ -30,7 +30,7 @@ jobs:
               console.log('dev environment')
             }
 
-            if (context.ref == "refs/heads/master") {
+            if (context.ref == "refs/heads/main") {
               core.setOutput('base_env', "production")
               console.log('prod environment')
             }
