@@ -1,0 +1,131 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: csvLoader
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 800
+
+
+Parameters:
+  SrcBucketName:
+    Description: ''
+    Default: csvloader012022
+    Type: String
+  
+  Product:
+    Description: 'Product'
+    Default: csvloader012022
+    Type: String
+
+
+Resources:
+
+  srcBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${SrcBucketName}"
+
+
+  csvLoaderLambdaPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: !Sub "${Product}-policy" #var
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+            - lambda:InvokeFunction
+            - s3:*
+            - dynamodb:PutItem
+            - dynamodb:BatchWriteItem
+            Resource: 
+            - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*${Product}*"
+            - !Sub "arn:aws:s3:::${SrcBucketName}"
+            - !Sub "arn:aws:s3:::${SrcBucketName}/*"
+            
+  csvLoaderLambdaDynamoPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: !Sub "${Product}-dynamo-policy" #var
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+            - dynamodb:PutItem
+            - dynamodb:BatchWriteItem
+            Resource: 
+            - '*'
+      
+            
+
+
+  csvLoaderRole: 
+    Type: "AWS::IAM::Role"
+    DependsOn: 
+      - csvLoaderLambdaPolicy
+      - csvLoaderLambdaDynamoPolicy 
+
+    Properties: 
+      RoleName: csvLoader-role
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+        - 'arn:aws:iam::aws:policy/AWSLambdaInvocation-DynamoDB'
+        - !Ref csvLoaderLambdaPolicy
+        - !Ref csvLoaderLambdaDynamoPolicy
+
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Effect: "Allow"
+            Principal: 
+              Service: 
+                - "lambda.amazonaws.com"
+            Action: 
+              - "sts:AssumeRole"
+
+  
+  
+
+
+  csvLoaderFunction:
+    Type: AWS::Serverless::Function
+    DependsOn:
+      - csvLoaderRole
+    Properties:
+      FunctionName: 'csvLoaderFunction'
+      CodeUri: csvLoader/
+      Handler: app.lambda_handler
+      Runtime: python3.8
+ 
+      MemorySize: 200
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/csvLoader-role"
+      Environment:
+        Variables:
+          table: !Sub "${SrcBucketName}"
+
+      Events:
+         CreateCsvEvent:
+          Type: S3
+          Properties:
+            Bucket: !Ref srcBucket
+            Events: s3:ObjectCreated:*
+
+  dynamodestinationtable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${SrcBucketName}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - 
+        AttributeName: "uuid"
+        AttributeType: "S"
+      KeySchema:
+      - 
+        AttributeName: "uuid"
+        KeyType: "HASH"
+
+      
